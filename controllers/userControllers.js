@@ -26,16 +26,25 @@ const registerUser = async (req, res) => {
                     ...req.body,
                     password: hash,
                 })
+                
+                user.save().then((newUser) => {
 
-                user.save().then((newDoc) => {
-                    res.status(200).json({ result: true, User: newDoc });
+                    const token = jwt.sign(
+                        { id: newUser._id, email: newUser.email, name: newUser.name }, 
+                        process.env.JWT_SECRET,
+                        { expiresIn: process.env.JWT_EXPIRES_IN } 
+                      );
+
+
+                token && res.status(200).json({ result: true, userToken: token, name: newUser.name});
+
                   });
             } catch (error) {
                 console.log(error);
             }
 
         } else {
-            return res.status(400).json({ message: "User already exists" });
+            return res.json({ error: "User already exists" });
             
         }
         
@@ -45,7 +54,7 @@ const registerUser = async (req, res) => {
 
 const deleteUser = async (req, res) => {
 
-    const email = req.body.email;
+    const email = req.user.email;
     const password = req.body.password;
 
     try {
@@ -61,7 +70,7 @@ const deleteUser = async (req, res) => {
             const hash = bcrypt.compareSync(password, user.password);
 
             if(hash) {
-                User.deleteOne({ id: user.id }).then(() => {
+                User.deleteOne({ _id: user.id }).then(() => {
                     res.status(200).json({ result: true, deleted: email });
                 })}
         })
@@ -72,15 +81,16 @@ const deleteUser = async (req, res) => {
 
 const getUsers = async (req, res) => {
 
-    const name = req.body.name;
+    const name = req.query.name;
+    const email = req.query.email;
     const filter = {};
 
     if (name) {
       filter.name = { $regex: name, $options: "i" };
     }
-
-
-    if(name) {
+    if (email) {
+      filter.email = { $regex: email, $options: "i" };
+    }
         User.find(filter).select("-password").then((users) => {
             if(users.length !== 0) {
                 res.status(200).json({ users });
@@ -88,12 +98,6 @@ const getUsers = async (req, res) => {
                 res.status(404).json({ result: false, message: "Users not found" });
             }
         })
-    } else {
-        User.find({}).then((users) => {
-            console.log(users)
-            res.status(200).json({ users });
-        })  
-    }
 }
 
 
@@ -102,8 +106,12 @@ const login = async (req, res) => {
     const email = req.body.email;
     const password = req.body.password;
 
+
     User.findOne({email}).then((user) => {
         
+        if(user == null) {
+            return res.status(400).json({ result: false, error: "User does not exist" });
+        }
         const hash = bcrypt.compareSync(password, user.password);
 
         if(hash) {
@@ -113,10 +121,10 @@ const login = async (req, res) => {
                 { expiresIn: process.env.JWT_EXPIRES_IN } 
               );
 
-            res.status(200).json({ response: true, token: token });
+            res.status(200).json({ result: true, token: token , name: user.name});
 
         } else {
-            res.status(400).json({ response: false, error: "Login failed" });
+            res.status(404).json({ result: false, error: "Login failed" });
         }
     })  
 }
